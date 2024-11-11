@@ -16,7 +16,7 @@ def which_sudo() -> str | None:
     if os.getuid() == 0:
         return None
 
-    supported_sudos = ["doas", "sudo", "run0"]
+    supported_sudos = ("doas", "sudo", "run0")
 
     user_set_sudo = os.getenv("PMB_SUDO")
     if user_set_sudo is not None:
