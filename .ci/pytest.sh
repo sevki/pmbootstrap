@@ -6,11 +6,11 @@
 if [ "$(id -u)" = 0 ]; then
 	set -x
 	apk -q add \
+		doas \
 		git \
 		openssl \
 		py3-pytest \
-		py3-pytest-cov \
-		sudo
+		py3-pytest-cov
 	exec su "${TESTUSER:-build}" -c "sh -e $0"
 fi
 
