@@ -863,6 +863,7 @@ def install_system_image(
     boot_label: str = "pmOS_boot",
     root_label: str = "pmOS_root",
     split: bool = False,
+    stowaway: bool = False,
     single_partition: bool = False,
     disk: Path | None = None,
 ) -> None:
@@ -925,12 +926,14 @@ def install_system_image(
     # Since we shut down the chroot we need to mount it again
     pmb.chroot.mount(chroot)
 
-    # Create /etc/fstab and /etc/crypttab
-    logging.info("(native) create /etc/fstab")
-    create_fstab(layout, chroot, filesystem, full_disk_encryption)
-    if full_disk_encryption:
-        logging.info("(native) create /etc/crypttab")
-        create_crypttab(layout, chroot)
+    # stowaway is in android userdata partition. can only be root mounted by initramfs
+    if not stowaway:
+        # Create /etc/fstab and /etc/crypttab
+        logging.info("(native) create /etc/fstab")
+        create_fstab(layout, chroot, filesystem, full_disk_encryption)
+        if full_disk_encryption:
+            logging.info("(native) create /etc/crypttab")
+            create_crypttab(layout, chroot)
 
     # Run mkinitfs to pass UUIDs to cmdline
     logging.info(f"({chroot}) mkinitfs")
@@ -1259,6 +1262,7 @@ def create_device_rootfs(
     full_disk_encryption: bool,
     no_sshd: bool,
     no_firewall: bool,
+    stowaway: bool,
 ) -> None:
     # list all packages to be installed (including the ones specified by --add)
     # and upgrade the installed packages/apkindexes
@@ -1313,6 +1317,17 @@ def create_device_rootfs(
     # when services are installed later
     if pmb.config.other.is_systemd_selected(context.config):
         pmb.chroot.apk.install(["postmarketos-base-systemd"], chroot)
+
+    if stowaway:
+        stowaway_cmdline = """
+pmos.stowaway
+pmos_root=/dev/disk/by-partlabel/userdata
+"""
+        with (chroot / "tmp/90-stowaway.conf").open("w") as f:
+            f.write(stowaway_cmdline)
+        pmb.chroot.root(
+            ["mv", "/tmp/90-stowaway.conf", "/usr/lib/kernel-cmdline.d/90-stowaway.conf"], chroot
+        )
 
     # Install all packages to device rootfs chroot (and rebuild the initramfs,
     # because that doesn't always happen automatically yet, e.g. when the user
@@ -1373,6 +1388,7 @@ def install(
     verbose: bool,
     zap: bool,
     is_split: bool,
+    stowaway: bool = False,
 ) -> None:
     device = get_context().config.device
     chroot = Chroot(ChrootType.ROOTFS, device)
@@ -1389,6 +1405,9 @@ def install(
         is_split = False
         if deviceinfo.create_initfs_extra:
             raise RuntimeError("--single-partition does not work for devices with initramfs-extra")
+
+    if stowaway:
+        is_split = True
 
     # Number of steps for the different installation methods.
     if no_image:
@@ -1420,6 +1439,7 @@ def install(
         full_disk_encryption,
         no_sshd,
         no_firewall,
+        stowaway=stowaway,
     )
     step += 1
 
@@ -1467,6 +1487,7 @@ def install(
         split=is_split,
         single_partition=single_partition,
         disk=disk,
+        stowaway=stowaway,
     )
 
     print_flash_info(

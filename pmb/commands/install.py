@@ -39,6 +39,7 @@ def install(
     single_partition: bool,
     sparse: bool | None,
     split: bool | None,
+    stowaway: bool,
     verbose: bool,
     zap: bool,
 ) -> None:
@@ -46,6 +47,8 @@ def install(
     device = config.device
     deviceinfo = pmb.parse.deviceinfo(device)
     is_split = split if split is not None else False
+    if stowaway:
+        is_split = True
     if no_fde:
         logging.warning("WARNING: --no-fde is deprecated, as it is now the default.")
     if rsync and full_disk_encryption:
@@ -139,4 +142,5 @@ def install(
         verbose,
         zap,
         is_split,
+        stowaway=stowaway,
     )
