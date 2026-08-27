@@ -757,7 +757,7 @@ def get_parser() -> argparse.ArgumentParser:
         "--config",
         dest="config",
         type=lambda x: Path(x),
-        default=pmb.config.defaults["config"],
+        default=None,
         help="path to pmbootstrap_v3.cfg file (default in ~/.config/)",
     )
     parser.add_argument(
@@ -895,6 +895,11 @@ def get_parser() -> argparse.ArgumentParser:
     init.add_argument(
         "--shallow-initial-clone",
         help="do a shallow clone if pmaports has to be cloned. Primarily useful to speed up scripts.",
+        action="store_true",
+    )
+    init.add_argument(
+        "--local",
+        help="Initialise a local workdir at ./.pmb",
         action="store_true",
     )
 

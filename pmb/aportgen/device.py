@@ -241,7 +241,7 @@ def generate_deviceinfo(
             pass
 
     # Write to file
-    work = get_context().config.work
+    work = get_context().config.cache
     pmb.helpers.run.user(["mkdir", "-p", work / "aportgen"])
     path = work / "aportgen/deviceinfo"
     with open(path, "w", encoding="utf-8") as handle:
@@ -262,7 +262,7 @@ def generate_modules_initfs() -> None:
     """
 
     # Write to file
-    work = get_context().config.work
+    work = get_context().config.cache
     pmb.helpers.run.user(["mkdir", "-p", work / "aportgen"])
     path = work / "aportgen/modules-initfs"
     with open(path, "w", encoding="utf-8") as handle:
@@ -323,7 +323,7 @@ def generate_apkbuild(
         """
 
     # Write the file
-    work = get_context().config.work
+    work = get_context().config.cache
     pmb.helpers.run.user(["mkdir", "-p", work / "aportgen"])
     path = work / "aportgen/APKBUILD"
     with open(path, "w", encoding="utf-8") as handle:

@@ -33,6 +33,9 @@ class Context:
     force: bool = False
     log: Path
 
+    # If we are working with a local work dir rather than the global one
+    local: bool = False
+
     # assume yes to prompts
     assume_yes: bool = False
 
@@ -53,7 +56,7 @@ class Context:
     config: Config
 
     def __init__(self, config: Config) -> None:
-        self.log = config.work / "log.txt"
+        self.log = config.cache / "log.txt"
         self.config = config
 
 

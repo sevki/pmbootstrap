@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
 import sys
+from pathlib import Path
 
 import pmb.config
 import pmb.helpers.git
 from pmb.core.context import CommandTimeout, Context, TimeoutReason
-from pmb.core.pkgrepo import pkgrepo_default_path
 from pmb.types import PmbArgs
 
 """This file constructs the args variable, which is passed to almost all
@@ -31,7 +31,7 @@ from pmb.types import PmbArgs
         with "pmbootstrap init".
 
        Examples:
-       args.aports ("$WORK/cache_git/pmaports", override with --aports)
+       args.aports ("$WORK/git/pmaports", override with --aports)
        args.device ("samsung-i9100", "qemu-amd64" etc.)
        get_context().config.work ("/home/user/.local/var/pmbootstrap", override with --work)
 
@@ -49,10 +49,26 @@ from pmb.types import PmbArgs
 
 def init(args: PmbArgs) -> PmbArgs:
     args_ = PmbArgs()
+    local = False
     # Basic initialization
-    # print(json.dumps(args.__dict__))
-    # sys.exit(0)
+    if not args.config:
+        cwd = Path.cwd()
+        for i in range(len(cwd.parts)):
+            local_conf = Path(*cwd.parts[:-i], "pmbootstrap.conf")
+            # If the path isn't owned by the user then we have gone too far.
+            if local_conf.parent.owner() != os.getlogin():
+                break
+            if local_conf.exists():
+                print(f"Using local config {local_conf}")
+                args.config = local_conf
+                local = True
+                break
+        if not args.config:
+            args.config = Path(pmb.config.defaults["config"])
     config = pmb.config.load(args.config)
+
+    # We must be using a local config file AND a local work dir
+    local = local and config.work.is_relative_to(args.config.parent)
 
     if args.aports:
         for pmaports_dir in args.aports:
@@ -94,6 +110,7 @@ def init(args: PmbArgs) -> PmbArgs:
     context.assume_yes = getattr(args, "assume_yes", False)
     context.force = getattr(args, "force", False)
     context.no_depends = getattr(args, "no_depends", False)
+    context.local = local
 
     # Initialize context
     pmb.core.context.set_context(context)
@@ -106,20 +123,6 @@ def init(args: PmbArgs) -> PmbArgs:
         pmb.helpers.logging.info(
             f"NOTE: Timeout enabled, commands will be killed after {context.command_timeout.length} seconds of not writing any output. Reason: {context.command_timeout.reason}"
         )
-
-    # Initialization code which may raise errors
-    if args.action not in [
-        "init",
-        "checksum",
-        "config",
-        "bootimg_analyze",
-        "log",
-        "pull",
-        "shutdown",
-        "zap",
-    ]:
-        pmb.config.pmaports.read_config()
-        pmb.helpers.git.parse_channels_cfg(pkgrepo_default_path())
 
     # Remove attributes from args so they don't get used by mistake
     if hasattr(args, "timeout"):

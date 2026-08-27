@@ -112,8 +112,7 @@ def get_kernel_package(config: Config) -> list[str]:
 def copy_files_from_chroot(chroot: Chroot, rsync: bool, verbose: bool) -> None:
     """
     Copy all files from the rootfs chroot to /mnt/install, except
-    for the home folder (because /home will contain some empty
-    mountpoint folders).
+    for /home, /work, /cache, and /mnt which shouldn't be included.
 
     :param suffix: the chroot suffix, e.g. "rootfs_qemu-amd64"
     """
@@ -136,7 +135,7 @@ def copy_files_from_chroot(chroot: Chroot, rsync: bool, verbose: bool) -> None:
     # Get all folders inside the device rootfs (except for home)
     folders: list[str] = []
     for path in mountpoint_outside.glob("*"):
-        if path.name == "home":
+        if path.name in ["home", "cache", "work"]:
             continue
         folders.append(path.name)
 
@@ -177,14 +176,14 @@ def configure_apk(install_local_pkgs: bool) -> None:
     """
     Copy over all official keys, and the keys used to compile local packages
     (unless --no-local-pkgs is set). Then copy the corresponding APKINDEX files
-    and remove the /mnt/pmbootstrap/packages repository.
+    and remove the /work/packages repository.
     """
     # Official keys
     keys_dir = pmb.config.apk_keys_path
 
     # Official keys + local keys
     if install_local_pkgs:
-        keys_dir = get_context().config.work / "config_apk_keys"
+        keys_dir = get_context().config.cache / "keys"
 
     # Copy over keys
     rootfs = Chroot.native() / "mnt/install"
@@ -199,9 +198,7 @@ def configure_apk(install_local_pkgs: bool) -> None:
         pmb.helpers.run.root(["cp", f, rootfs / "var/cache/apk/"])
 
     # Disable pmbootstrap repository
-    pmb.chroot.root(
-        ["sed", "-i", r"/\/mnt\/pmbootstrap\/packages/d", "/mnt/install/etc/apk/repositories"]
-    )
+    pmb.chroot.root(["sed", "-i", r"/\/work\/packages/d", "/mnt/install/etc/apk/repositories"])
 
 
 def set_user(config: Config) -> None:
@@ -443,16 +440,19 @@ def setup_appstream(offline: bool, chroot: Chroot) -> None:
     if "alpine-appstream-downloader" not in installed_pkgs or offline:
         return
 
-    if not pmb.chroot.root(
-        ["alpine-appstream-downloader", "/mnt/appstream-data"], chroot, check=False
-    ):
+    target_dir = Path("/cache/appstream") / chroot.arch
+    logging.info(f"appstream target dir: {target_dir}")
+
+    # FIXME: it would be great to run this on the host and not potentially
+    # through QEMU!
+    if not pmb.chroot.root(["alpine-appstream-downloader", target_dir], chroot, check=False):
         pmb.chroot.root(["mkdir", "-p", "/var/lib/swcatalog"], chroot)
         pmb.chroot.root(
             [
                 "cp",
                 "-r",
-                "/mnt/appstream-data/icons",
-                "/mnt/appstream-data/xml",
+                target_dir / "icons",
+                target_dir / "xml",
                 "-t",
                 "/var/lib/swcatalog",
             ],
