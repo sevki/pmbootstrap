@@ -218,7 +218,9 @@ def _init(pkgname: str, arch: Arch | None) -> tuple[str, Arch, Any, Chroot, Env]
     # Set up build tools and makedepends
     pmb.build.init(chroot)
     if cross.enabled():
-        pmb.build.init_compiler(get_context(), makedepends, cross, arch)
+        pmb.build.init_compiler(
+            get_context(), makedepends, "pmb:gnu-toolchain" in apkbuild["options"], cross, arch
+        )
 
     # Assume that LLVM is in use if clang is a build dependency
     uses_llvm = "clang" in makedepends

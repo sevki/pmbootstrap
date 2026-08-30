@@ -106,10 +106,14 @@ def init(chroot: Chroot = Chroot.native()) -> bool:
     return True
 
 
-def init_compiler(context: Context, depends: list[str], cross: CrossCompile, arch: Arch) -> None:
+def init_compiler(
+    context: Context, depends: list[str], is_llvm_toolchain: bool, cross: CrossCompile, arch: Arch
+) -> None:
     arch_str = str(arch)
     cross_pkgs = ["ccache-cross-symlinks", "abuild"]
-    if "gcc4" in depends:
+    if is_llvm_toolchain:
+        cross_pkgs += ["postmarketos-build-base"]
+    elif "gcc4" in depends:
         cross_pkgs += ["gcc4-" + arch_str]
     elif "gcc6" in depends:
         cross_pkgs += ["gcc6-" + arch_str]
