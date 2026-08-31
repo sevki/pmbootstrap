@@ -93,6 +93,27 @@ def check_option(
             )
         return False
 
+    def strong_warn_ret_true(should_str: str) -> bool:
+        """
+        Stronger warning for options that are recommended (but not
+        mandatory) to be set to certain values
+
+        :param should_str: string with recommended value and currently set value
+        :returns: True
+        """
+        config_name = os.path.basename(config_path)
+        if details:
+            logging.warning(
+                f"WARNING: {config_name}: CONFIG_{option} is recommended to {should_str} ({component})"
+            )
+        else:
+            logging.warning(
+                f"WARNING: {config_name} has suboptimal configuration"
+                f" ({component}), run 'pmbootstrap kconfig check'"
+                " for details!"
+            )
+        return True
+
     def warn_ret_true(should_str: str) -> bool:
         config_name = os.path.basename(config_path)
         if details:
@@ -116,11 +137,17 @@ def check_option(
             # Tristate option
             if option_value == "n":
                 if is_set(config, option):
-                    return warn_ret_false("*not* be set")
+                    if component == "category:recommended":
+                        return strong_warn_ret_true("*not* be set")
+                    else:
+                        return warn_ret_false("*not* be set")
                 return True
 
             if not is_set(config, option):
-                return warn_ret_false(f"be enabled and preferably set to '{option_value}'")
+                if component == "category:recommended":
+                    return strong_warn_ret_true(f"set to '{option_value}'")
+                else:
+                    return warn_ret_false(f"be enabled and preferably set to '{option_value}.'")
 
             # Store value to avoid a few extra calls to is_set_str
             if is_set_str(config, option, "y"):
@@ -135,7 +162,10 @@ def check_option(
         else:
             # Regular string option
             if not is_set_str(config, option, option_value):
-                return warn_ret_false(f'be set to "{option_value}"')
+                if component == "category:recommended":
+                    return strong_warn_ret_true(f'set to "{option_value}"')
+                else:
+                    return warn_ret_false(f'be set to "{option_value}"')
     elif option_value in [True, False]:
         if option_value != is_set(config, option):
             return warn_ret_false("be set" if option_value else "*not* be set")
@@ -221,6 +251,8 @@ def check_config(
 
     if "default" not in categories:
         categories.append("default")
+    if "recommended" not in categories:
+        categories.append("recommended")
 
     # Get all rules
     rules = pmb.parse.kconfigcheck.read_categories(categories)
@@ -458,7 +490,7 @@ def create_pmos_fragment(apkbuild: Apkbuild, arch: Arch) -> str:
     :returns: kconfig fragment as a string
     """
     # Extract categories from APKBUILD options
-    categories = ["default"]  # Always include default
+    categories = ["default", "recommended"]  # Always include default and recommended
     for option in apkbuild["options"]:
         if option.startswith("pmb:kconfigcheck-"):
             category = option.split("-", 1)[1]
