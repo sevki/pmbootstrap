@@ -292,6 +292,12 @@ def arguments_sideload(
         action="store_true",
         dest="install_key",
     )
+    ret.add_argument(
+        "--strict",
+        help="Don't automatically sideload relevant subpackages",
+        action="store_true",
+        dest="strict",
+    )
     return ret
 
 
