@@ -1,5 +1,7 @@
 # Copyright 2023 Attila Szollosi
 # SPDX-License-Identifier: GPL-3.0-or-later
+
+import os
 from pathlib import Path
 
 import pmb.chroot
@@ -36,6 +38,23 @@ def create_zip(
 
     # Install recovery installer package in buildroot
     pmb.chroot.apk.install(["postmarketos-android-recovery-installer"], chroot)
+
+    # Only copy files if using newer version of postmarketos-android-recovery-installer
+    if os.path.isdir(
+        chroot / "usr/lib/postmarketos-android-recovery-installer"
+    ) and not os.path.isdir(chroot / "var/lib/postmarketos-android-recovery-installer"):
+        logging.info(f"({chroot}) copying recovery files to /var/lib/")
+        # Use -rf here for compatibility with the package version using /var/lib/ directly
+        pmb.chroot.root(
+            [
+                "cp",
+                "-r",
+                "/usr/lib/postmarketos-android-recovery-installer",
+                "/var/lib/postmarketos-android-recovery-installer",
+            ]
+        )
+    else:
+        logging.info(f"({chroot}) recovery files already exist; not copying to /var/lib/")
 
     logging.info(f"({chroot}) create recovery zip")
 
@@ -81,7 +100,18 @@ def create_zip(
         # Move config file from /tmp/ to zip root
         ["mv", "/tmp/install_options", "chroot/install_options"],
         # Create tar archive of the rootfs
-        ["tar", "-pcf", "rootfs.tar", "--exclude", "./home", "-C", rootfs, "."],
+        [
+            "tar",
+            "-pcf",
+            "rootfs.tar",
+            "--exclude",
+            "./home",
+            "--exclude",
+            "/usr/lib/postmarketos-android-recovery-installer",
+            "-C",
+            rootfs,
+            ".",
+        ],
         # Append packages keys
         ["tar", "-prf", "rootfs.tar", "-C", "/", "./etc/apk/keys"],
         # Compress with -1 for speed improvement
