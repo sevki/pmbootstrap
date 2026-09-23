@@ -81,6 +81,8 @@ def check_option(
 
     def warn_ret_false(should_str: str) -> bool:
         config_name = os.path.basename(config_path)
+        pkgname = "linux-" + config_name.split("config-")[1].split(".")[0]
+
         if details:
             logging.error(
                 f"ERROR: {config_name}: CONFIG_{option} should {should_str} ({component})"
@@ -88,13 +90,15 @@ def check_option(
         else:
             logging.warning(
                 f"WARNING: {config_name} isn't configured properly"
-                f" ({component}), run 'pmbootstrap kconfig check'"
+                f" ({component}), run 'pmbootstrap kconfig check {pkgname}'"
                 " for details!"
             )
         return False
 
     def warn_ret_true(should_str: str) -> bool:
         config_name = os.path.basename(config_path)
+        pkgname = "linux-" + config_name.split("config-")[1].split(".")[0]
+
         if details:
             logging.warning(
                 f"INFO: {config_name}: CONFIG_{option} is preferably {should_str} ({component})"
@@ -102,7 +106,7 @@ def check_option(
         else:
             logging.warning(
                 f"INFO: {config_name} has suboptimal configuration"
-                f" ({component}), run 'pmbootstrap kconfig check'"
+                f" ({component}), run 'pmbootstrap kconfig check {pkgname}'"
                 " for details!"
             )
         return True
