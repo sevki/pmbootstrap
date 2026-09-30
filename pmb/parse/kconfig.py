@@ -81,7 +81,7 @@ def check_option(
 
     def warn_ret_false(should_str: str) -> bool:
         config_name = os.path.basename(config_path)
-        pkgname = "linux-" + config_name.split("config-")[1].split(".")[0]
+        pkgname = config_name.split("config-")[1].split(".")[0]
 
         if details:
             logging.error(
@@ -97,7 +97,7 @@ def check_option(
 
     def warn_ret_true(should_str: str) -> bool:
         config_name = os.path.basename(config_path)
-        pkgname = "linux-" + config_name.split("config-")[1].split(".")[0]
+        pkgname = config_name.split("config-")[1].split(".")[0]
 
         if details:
             logging.warning(
