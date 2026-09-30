@@ -29,14 +29,14 @@ __version__ = "3.11.1"
 # Python version check
 # === CHECKLIST FOR UPGRADING THE REQUIRED PYTHON VERSION ===
 # * .ci/vermin.sh
+# * .gitlab-ci.yml (Pytest for minimum Python version)
 # * README.md
 # * docs/usage.rst
 # * pmb/__init__.py (you are here)
 # * pyproject.toml
-# * when upgrading to python 3.11: pmb/helpers/toml.py and remove this line
 version = sys.version_info
-if version < (3, 10):
-    print("You need at least Python 3.10 to run pmbootstrap")
+if version < (3, 11):
+    print("You need at least Python 3.11 to run pmbootstrap")
     print("(You are running it with Python " + str(version.major) + "." + str(version.minor) + ")")
     sys.exit()
 
