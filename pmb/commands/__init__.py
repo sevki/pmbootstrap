@@ -164,6 +164,7 @@ def run_command(args: PmbArgs) -> None:
                 args.single_partition,
                 args.sparse,
                 args.split,
+                args.stowaway,
                 args.verbose,
                 args.zap,
             )

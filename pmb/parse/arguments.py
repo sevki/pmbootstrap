@@ -128,6 +128,12 @@ def arguments_install(subparser: argparse._SubParsersAction[argparse.ArgumentPar
         "--split", help="create separate boot and root image files", action="store_true"
     )
     group.add_argument(
+        "--stowaway",
+        help="build images intended for stowaway installation, implies --split",
+        action="store_true",
+        default=False,
+    )
+    group.add_argument(
         "--disk",
         "--sdcard",
         help="do not create an image file, instead"
