@@ -186,6 +186,14 @@ def handle_csum_failure(apkbuild: Apkbuild, chroot: Chroot) -> None:
         raise RuntimeError(f"Remote checksum mismatch for {apkbuild['pkgname']}")
 
 
+def is_llvm_toolchain(apkbuild: Apkbuild) -> bool:
+    ret = True
+    if "pmb:gnu-toolchain" in apkbuild["options"]:
+        ret = False
+
+    return ret
+
+
 def run_abuild(
     context: Context,
     apkbuild: Apkbuild,
@@ -219,6 +227,12 @@ def run_abuild(
 
     hostchroot = cross.host_chroot(arch)
     buildchroot = cross.build_chroot(arch)
+    llvm_build_base = is_llvm_toolchain(apkbuild)
+
+    if llvm_build_base:
+        pmb.chroot.apk.install(["postmarketos-build-base"], buildchroot, build=False)
+    else:
+        pmb.chroot.apk.install(["build-base"], buildchroot, build=False)
 
     # For cross-native2 compilation, bindmount the "host" rootfs to /mnt/sysroot
     # it will be used as the "sysroot"
@@ -252,10 +266,35 @@ def run_abuild(
 
     # Environment variables
     env: Env = {"SUDO_APK": "abuild-apk --no-progress", "PMB_CROSS": str(cross)}
+    # Because gcc is installed occasionally due to dependency trees, the LLVM-
+    # suite has to be manually specified.
+    if llvm_build_base:
+        env["CC"] = "clang"
+        env["HOSTCC"] = "clang"
+        env["CXX"] = "clang++"
+        env["CPP"] = "clang-cpp"
+        env["HOSTCXX"] = "clang++"
+        env["HOSTCPP"] = "clang-cpp"
+        env["LD"] = "lld"
+        env["LDFLAGS"] = "-fuse-ld=lld"
+        env["HOSTLDFLAGS"] = "-fuse-ld=lld"
+        env["HOSTLD"] = "lld"
+        env["AR"] = "llvm-ar"
+        env["HOSTAR"] = "llvm-ar"
+        env["NM"] = "llvm-nm"
+        env["STRIP"] = "llvm-strip"
+        env["OBJCOPY"] = "llvm-objcopy"
+        env["OBJDUMP"] = "llvm-objdump"
+        env["READELF"] = "llvm-readelf"
+        env["RUSTFLAGS"] = "-C linker=clang -C link-arg=-fuse-ld=lld"
+
     if cross == CrossCompile.CROSS_NATIVE:
-        hostspec = arch.alpine_triple()
-        env["CROSS_COMPILE"] = hostspec + "-"
-        env["CC"] = hostspec + "-gcc"
+        if llvm_build_base:
+            env["CROSS_COMPILE"] = "llvm-"
+        else:
+            hostspec = arch.alpine_triple()
+            env["CROSS_COMPILE"] = hostspec + "-"
+            env["CC"] = hostspec + "-gcc"
     if cross == CrossCompile.CROSS_NATIVE2:
         env["CHOST"] = str(arch)
         env["CBUILDROOT"] = "/mnt/sysroot"
