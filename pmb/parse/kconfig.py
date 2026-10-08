@@ -220,7 +220,7 @@ def check_config(
     config = config_path.read_text()
 
     if "default" not in categories:
-        categories += ["default"]
+        categories.append("default")
 
     # Get all rules
     rules = pmb.parse.kconfigcheck.read_categories(categories)
