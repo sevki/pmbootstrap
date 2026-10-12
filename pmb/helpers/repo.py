@@ -8,7 +8,6 @@ See also:
 - pmb/helpers/package.py (work with both)
 """
 
-import hashlib
 import os
 from pathlib import Path
 from typing import Literal
@@ -16,6 +15,7 @@ from typing import Literal
 import pmb.config.pmaports
 import pmb.helpers.http
 import pmb.helpers.run
+from pmb.core.apk_repo import ApkRepo
 from pmb.core.apkindex import Apkindex
 from pmb.core.arch import Arch
 from pmb.core.context import get_context
@@ -25,40 +25,12 @@ from pmb.helpers.exceptions import NonBugError
 from pmb.meta import Cache
 
 
-def apkrepo_hash(url: str, length: int = 8) -> str:
-    r"""
-    Generate the hash that APK adds to the APKINDEX and apk packages in its apk cache folder.
-
-    It is the "12345678" part in this example:
-    "APKINDEX.12345678.tar.gz".
-
-    :param length: The length of the hash in the output file.
-
-    See also: official implementation in apk-tools:
-    <https://git.alpinelinux.org/cgit/apk-tools/>
-
-    blob.c: apk_blob_push_hexdump(), "const char \\*xd"
-    apk_defines.h: APK_CACHE_CSUM_BYTES
-    database.c: apk_repo_format_cache_index()
-    """
-    binary = hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).digest()
-    xd = "0123456789abcdefghijklmnopqrstuvwxyz"
-    csum_bytes = int(length / 2)
-
-    ret = ""
-    for i in range(csum_bytes):
-        ret += xd[(binary[i] >> 4) & 0xF]
-        ret += xd[binary[i] & 0xF]
-
-    return f"APKINDEX.{ret}.tar.gz"
-
-
 # FIXME: make config.mirrors a normal dict
 # mypy: disable-error-code="literal-required"
 @Cache("user_repository", "mirrors_exclude")
-def get_repos_from_config(
+def _get_repos_from_config(
     user_repository: Path | None = None, mirrors_exclude: list[str] | Literal[True] = []
-) -> list[str]:
+) -> list[ApkRepo]:
     """
     Get a list of repository URLs, as they are in /etc/apk/repositories.
 
@@ -68,11 +40,13 @@ def get_repos_from_config(
     :returns: list of mirror strings, like ["/mnt/pmbootstrap/packages",
                                             "http://...", ...]
     """
-    ret: list[str] = []
+    ret: list[ApkRepo] = []
 
     # Local user repository (for packages compiled with pmbootstrap)
     if user_repository:
-        ret.extend(str(user_repository / channel) for channel in pmb.config.pmaports.all_channels())
+        ret.extend(
+            ApkRepo(user_repository / channel) for channel in pmb.config.pmaports.all_channels()
+        )
 
     if mirrors_exclude is True:
         return ret
@@ -82,14 +56,10 @@ def get_repos_from_config(
     # Get mirrordirs from channels.cfg (postmarketOS mirrordir is the same as
     # the pmaports branch of the channel, no need to make it more complicated)
     channel_cfg = pmb.config.pmaports.read_config_channel()
-    mirrordir_pmos = channel_cfg["branch_pmaports"]
-    mirrordir_alpine = channel_cfg["mirrordir_alpine"]
+    release_pmos = channel_cfg["branch_pmaports"]
+    release_alpine = channel_cfg["mirrordir_alpine"]
 
-    # Don't add the systemd mirror if systemd is disabled
-    if not pmb.config.is_systemd_selected(config):
-        mirrors_exclude.append("systemd")
-
-    # ["pmaports", "systemd", "alpine", "plasma-nightly"]
+    # ["pmaports", "systemd", "alpine"]
     for repo in [*pkgrepo_names(), "alpine"]:
         if repo in mirrors_exclude:
             continue
@@ -100,28 +70,17 @@ def get_repos_from_config(
         for suffix in ["_custom", ""]:
             mirror = config.mirrors[f"{repo}{suffix}"]
 
-            # During bootstrap / bpo testing we run without a pmOS binary repo
+            # If repo is disabled (e.g: during bootstrap), skip it
             if mirror.lower() == "none":
-                if suffix != "_custom":
-                    logging.warn_once(
-                        f"NOTE: Skipping mirrors.{repo} for /etc/apk/repositories (is configured"
-                        ' as "none")'
-                    )
                 continue
 
-            mirrordirs = []
             if repo == "alpine":
-                # FIXME: This is a bit of a mess
-                mirrordirs = [f"{mirrordir_alpine}/main", f"{mirrordir_alpine}/community"]
-                if mirrordir_alpine == "edge":
-                    mirrordirs.append(f"{mirrordir_alpine}/testing")
+                alpine_repos = [f"{release_alpine}/main", f"{release_alpine}/community"]
+                if release_alpine == "edge":
+                    alpine_repos.append(f"{release_alpine}/testing")
+                ret.extend(ApkRepo(os.path.join(mirror, r)) for r in alpine_repos)
             else:
-                mirrordirs = [mirrordir_pmos]
-
-            for mirrordir in mirrordirs:
-                url = os.path.join(mirror, mirrordir)
-                if url not in ret:
-                    ret.append(url)
+                ret.append(ApkRepo(os.path.join(mirror, release_pmos)))
 
     return ret
 
@@ -141,16 +100,11 @@ def apkindex_files(
     # Local user repository (for packages compiled with pmbootstrap)
     if user_repository:
         ret.extend(
-            Apkindex(get_context().config.work / "packages" / channel / arch / "APKINDEX.tar.gz")
-            for channel in pmb.config.pmaports.all_channels()
+            repo.get_index(arch)
+            for repo in ApkRepo.get_local(get_context().config.work / "packages")
         )
 
-    # Resolve the APKINDEX.$HASH.tar.gz files
-    ret.extend(
-        Apkindex(file)
-        for url in get_repos_from_config(None, exclude_mirrors)
-        if (file := get_context().config.work / f"cache_apk_{arch}" / apkrepo_hash(url)).exists()
-    )
+    ret.extend(repo.get_index(arch) for repo in _get_repos_from_config(None, exclude_mirrors))
 
     return ret
 
@@ -180,11 +134,11 @@ def update(arch: Arch, force: bool = False, existing_only: bool = False) -> bool
     # Find outdated APKINDEX files. Formats:
     # outdated: {URL: apkindex, ... }
     outdated = {}
-    for url in get_repos_from_config(None):
+    for repo in ApkRepo.get_from_config():
         # APKINDEX file name from the URL
-        remote_index = f"{url}/{arch}/APKINDEX.tar.gz"
+        remote_index = f"{repo}/{arch}/APKINDEX.tar.gz"
         cache_apk_outside = get_context().config.work / f"cache_apk_{arch}"
-        apkindex = Apkindex(cache_apk_outside, apkrepo_hash(url))
+        apkindex = Apkindex(cache_apk_outside, repo.hash())
 
         # Find update reason, possibly skip non-existing or known 404 files
         reason = None
@@ -246,7 +200,7 @@ def alpine_apkindex(repo: str, arch: Arch) -> Apkindex:
     :returns: full path to the APKINDEX file
     """
     # Repo sanity check
-    if repo not in ["main", "community", "testing", "non-free"]:
+    if repo not in ["main", "community", "testing"]:
         raise RuntimeError(f"Invalid Alpine repository: {repo}")
 
     # Download the file
@@ -254,6 +208,8 @@ def alpine_apkindex(repo: str, arch: Arch) -> Apkindex:
 
     # Find it on disk
     channel_cfg = pmb.config.pmaports.read_config_channel()
-    repo_link = f"{get_context().config.mirrors['alpine']}{channel_cfg['mirrordir_alpine']}/{repo}"
+    repo_link = ApkRepo(
+        f"{get_context().config.mirrors['alpine']}{channel_cfg['mirrordir_alpine']}/{repo}"
+    )
     cache_folder = get_context().config.work / (f"cache_apk_{arch}")
-    return Apkindex(cache_folder / apkrepo_hash(repo_link))
+    return Apkindex(cache_folder / repo_link.hash())
